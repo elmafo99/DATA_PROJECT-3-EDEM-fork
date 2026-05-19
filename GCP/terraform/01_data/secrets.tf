@@ -1,6 +1,6 @@
 # 1. Create the secret container
 resource "google_secret_manager_secret" "db_password_secret" {
-  secret_id = "risk-valencia-${var.environment}-db-password"
+  secret_id = "store-${var.environment}-db-password"
 
   replication {
     auto {}
@@ -15,7 +15,7 @@ resource "google_secret_manager_secret_version" "db_password_version" {
 
 # Demo users password secret
 resource "google_secret_manager_secret" "demo_password_secret" {
-  secret_id = "risk-valencia-${var.environment}-demo-password"
+  secret_id = "store-${var.environment}-demo-password"
 
   replication {
     auto {}

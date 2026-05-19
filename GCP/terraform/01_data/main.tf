@@ -2,7 +2,7 @@
 # This block points the Terraform state to the bucket created in GCP
 terraform {
   backend "gcs" {
-    bucket  = "terraform-state-data-project-2-491918"
+    bucket  = "bucker_exa"
     prefix  = "terraform/state/data"            
   }
 }
@@ -12,7 +12,7 @@ data "terraform_remote_state" "base" {
   backend = "gcs"
   
   config = {
-    bucket = "terraform-state-data-project-2-491918" # El nombre de tu bucket de estados
+    bucket = "bucker_exa" # El nombre de tu bucket de estados
     prefix = "terraform/state/base"
   }
 }
