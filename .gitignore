@@ -2,3 +2,27 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# Terraform state: contains the real state of ALL resources,
+# including Secret Manager secret values in plain text.
+GCP/envs/**/*.tfstate
+GCP/envs/**/*.tfstate.backup
+GCP/envs/**/*.tfstate.lock.info
+
+GCP/envs/**/*.tfvars
+
+# Terraform working directory (downloaded plugins, modules, etc.)
+# Regenerated with 'terraform init', does not need to be in the repo.
+GCP/envs/**/.terraform/
+
+# Saved plans — may contain expanded sensitive values
+GCP/envs/**/*.tfplan
+
+# The lock file SHOULD be committed to the repo (ensures reproducible versions)
+!**/.terraform.lock.hcl
+
+# Local environment variables file
+.env
+
+# Saved terraform plans
+*.tfplan
