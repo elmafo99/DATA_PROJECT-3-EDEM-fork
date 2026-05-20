@@ -145,10 +145,18 @@ echo ">>> PHASE 2: Building and pushing Docker image to Artifact Registry..."
 echo "-> Checking Docker status..."
 if ! docker info > /dev/null 2>&1; then
     echo "⚠️ Docker is not running. Attempting to start Docker Desktop automatically..."
+<<<<<<< Updated upstream
     
     # Typical Docker Desktop installation path on Windows (for Git Bash)
     "/c/Program Files/Docker/Docker/Docker Desktop.exe" &
     
+=======
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      open -a Docker &
+    else
+      "/c/Program Files/Docker/Docker/Docker Desktop.exe" &
+    fi
+>>>>>>> Stashed changes
     echo "⏳ Waiting for the Docker engine to start (this may take 1-2 minutes)..."
     
     # Wait loop: keeps checking every 5 seconds until docker info succeeds

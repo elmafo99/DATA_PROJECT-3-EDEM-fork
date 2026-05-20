@@ -63,7 +63,7 @@ function App() {
 
     fetch(`${import.meta.env.VITE_API_URL}/getArticulos`)
       .then(res => res.json())
-      .then(data => { setArticulos(data); setCargando(false); })
+      .then(data => { setArticulos(Array.isArray(data) ? data : []); setCargando(false); })
       .catch(err => { console.error("Error:", err); setCargando(false); });
   }, []);
 

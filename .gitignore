@@ -2,3 +2,8 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# Terraform provider binaries and local state (too large for GitHub)
+**/.terraform/
+*.tfstate
+*.tfstate.backup
