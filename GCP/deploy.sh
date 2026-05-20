@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e  # Stop the script if any command fails
 
-APP_NAME="risk-valencia"
+APP_NAME="tienda-de-ropa"
 
 # =============================================================================
 # ENVIRONMENT SELECTION
@@ -9,8 +9,8 @@ APP_NAME="risk-valencia"
 
 echo ""
 echo "========================================"
-echo "  Risk Valencia                  "
-echo "  Pipeline Deployment            "
+echo "  Tienda de Ropa                 "
+echo "  Deployment                     "
 echo "========================================"
 echo ""
 read -p "Which environment do you want to deploy? (e.g. dev, prod): " ENV
@@ -33,15 +33,12 @@ fi
 
 PROJECT_ID=$(gcloud config get-value project)
 REGION=$(gcloud config get-value compute/region)
-ZONE=$(gcloud config get-value compute/zone)
 REPO="$REGION-docker.pkg.dev/$PROJECT_ID/$APP_NAME-$ENV"
-
 
 echo ""
 echo "Environment : $ENV"
 echo "Project     : $PROJECT_ID"
 echo "Region      : $REGION"
-echo "Zone        : $ZONE"
 echo ""
 read -p "Continue with the deployment in this project and region? (yes/no): " CONFIRM
 
@@ -69,6 +66,7 @@ cat > envs/$ENV/terraform/01_data/terraform.tfvars <<EOF
 project_id      = "$PROJECT_ID"
 region          = "$REGION"
 app_name        = "$APP_NAME"
+environment     = "$ENV"
 EOF
 echo "✅ terraform.tfvars generated in envs/$ENV/terraform/01_data."
 
@@ -76,7 +74,6 @@ echo "✅ terraform.tfvars generated in envs/$ENV/terraform/01_data."
 cat > envs/$ENV/terraform/02_app/terraform.tfvars <<EOF
 project_id      = "$PROJECT_ID"
 region          = "$REGION"
-zone            = "$ZONE"
 environment     = "$ENV"
 app_name        = "$APP_NAME"
 EOF
@@ -89,11 +86,13 @@ echo "✅ terraform.tfvars generated in envs/$ENV/terraform/02_app."
 echo ""
 echo ">>> PHASE 0: Enabling GCP APIs..."
 gcloud services enable \
+        iam.googleapis.com \
+        cloudresourcemanager.googleapis.com \
         artifactregistry.googleapis.com \
         secretmanager.googleapis.com \
-        compute.googleapis.com \
-        firestore.googleapis.com\
-        dataflow.googleapis.com
+        run.googleapis.com \
+        sqladmin.googleapis.com \
+        sql-component.googleapis.com
 
 echo "✅ Phase 0 complete. APIs enabled in GCP."
 
@@ -103,12 +102,10 @@ echo "✅ Phase 0 complete. APIs enabled in GCP."
 
 echo ""
 echo ">>> PHASE 1: Deploying base infrastructure for environment '$ENV'..."
-# Navigate to the environment folder chosen by the user
 cd envs/$ENV/terraform/00_base
 
 terraform init -upgrade
 
-# Validate syntax (Fail Fast)
 echo "-> Validating Terraform code..."
 if ! terraform validate; then
     echo "❌ ERROR: Terraform validation failed. Check your .tf files."
@@ -116,47 +113,31 @@ if ! terraform validate; then
 fi
 echo "✅ Terraform validated successfully."
 
-echo "-> Syncing Firebase state (workaround for Identity Platform)..."
-
-    # 1. Check if Terraform already has the resource in its state
-    if ! terraform state list | grep -q "google_identity_platform_config.auth_config"; then
-        # 2. If not, attempt to import it from GCP.
-        # "2>/dev/null" suppresses error output.
-        # "|| true" prevents the script from stopping if the import fails (e.g. on a fresh project).
-        terraform import google_identity_platform_config.auth_config projects/$PROJECT_ID/config 2>/dev/null || true
-    fi
-
 terraform apply -auto-approve
 
-# Return to the root (go up four levels)
 cd ../../../..
 
 echo ""
 echo "✅ Phase 1 complete. Base infrastructure ready for environment '$ENV'."
 
 # =============================================================================
-# PHASE 2 — Docker image build and push (CI/CD)
+# PHASE 2 — Build and push API Docker image
 # =============================================================================
 
 echo ""
-echo ">>> PHASE 2: Building and pushing Docker image to Artifact Registry..."
+echo ">>> PHASE 2: Building and pushing API Docker image to Artifact Registry..."
 
 # Pre-flight check: verify Docker is running
 echo "-> Checking Docker status..."
 if ! docker info > /dev/null 2>&1; then
     echo "⚠️ Docker is not running. Attempting to start Docker Desktop automatically..."
-    
-    # Typical Docker Desktop installation path on Windows (for Git Bash)
     "/c/Program Files/Docker/Docker/Docker Desktop.exe" &
-    
     echo "⏳ Waiting for the Docker engine to start (this may take 1-2 minutes)..."
-    
-    # Wait loop: keeps checking every 5 seconds until docker info succeeds
     while ! docker info > /dev/null 2>&1; do
         echo -n "."
         sleep 5
     done
-    echo "" # Clean line break after dots
+    echo ""
     echo "Docker has started and is ready."
 else
     echo "Docker was already running."
@@ -165,41 +146,18 @@ fi
 # Authenticate the local Docker client with Google Cloud
 gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
-# --- IMAGE VARIABLES ---
-IMAGE_URL_INGESTION="$REPO/ingestion:latest"
-IMAGE_URL_DATAFLOW="$REPO/dataflow:latest"
-IMAGE_URL_DEMO_USERS="$REPO/firebase-seeder:latest"
 IMAGE_URL_API="$REPO/api:latest"
 IMAGE_URL_FRONTEND="$REPO/frontend:latest"
-TEMPLATE_PATH="gs://$PROJECT_ID-$APP_NAME-dataflow-temp-$ENV/templates/flextemplate-dataflow.json"
 
-# 1. Ingestion image
-echo "-> Building INGESTION image..."
-docker build --platform linux/amd64 -t $IMAGE_URL_INGESTION ./src/ingestion
-docker push $IMAGE_URL_INGESTION
-
-# 2. Dataflow image
-echo "-> Building DATAFLOW image..."
-docker build --platform linux/amd64 -t $IMAGE_URL_DATAFLOW ./src/dataflow
-docker push $IMAGE_URL_DATAFLOW
-
-# 3. Demo users image
-echo "-> Building DEMO USERS image..."
-docker build --platform linux/amd64 -t $IMAGE_URL_DEMO_USERS ./src/demo_users
-docker push $IMAGE_URL_DEMO_USERS
-
-# 4. API image
 echo "-> Building API image..."
-docker build --platform linux/amd64 -t $IMAGE_URL_API ./src/api
+cd ..
+cp -r images server/
+docker build --platform linux/amd64 -t $IMAGE_URL_API server
+rm -rf server/images
 docker push $IMAGE_URL_API
+cd GCP
 
-# 5. FRONTEND image
-echo "-> Building FRONTEND image..."
-docker build --platform linux/amd64 -t $IMAGE_URL_FRONTEND ./src/frontend
-docker push $IMAGE_URL_FRONTEND
-
-echo "✅ Phase 2 complete. Docker images pushed to artifact registry."
-
+echo "✅ Phase 2 complete. API image pushed to Artifact Registry."
 
 # =============================================================================
 # PHASE 3 — Terraform apply data
@@ -207,12 +165,10 @@ echo "✅ Phase 2 complete. Docker images pushed to artifact registry."
 
 echo ""
 echo ">>> PHASE 3: Deploying data infrastructure for environment '$ENV'..."
-# Navigate to the environment folder chosen by the user
 cd envs/$ENV/terraform/01_data
 
 terraform init -upgrade
 
-# Validate syntax (Fail Fast)
 echo "-> Validating Terraform code..."
 if ! terraform validate; then
     echo "❌ ERROR: Terraform validation failed. Check your .tf files."
@@ -222,42 +178,21 @@ echo "✅ Terraform validated successfully."
 
 terraform apply -auto-approve
 
-# Return to the root (go up four levels)
 cd ../../../..
 
 echo ""
 echo "✅ Phase 3 complete. Data infrastructure ready for environment '$ENV'."
 
-
 # =============================================================================
-# PHASE 4 — Dataflow Flex Template build
-# =============================================================================
-echo ""
-echo ">>> PHASE 4: Registering Flex Template in Cloud Storage..."
-
-gcloud dataflow flex-template build "$TEMPLATE_PATH" \
-    --image "$IMAGE_URL_DATAFLOW" \
-    --sdk-language "PYTHON" \
-    --metadata-file "src/dataflow/metadata.json" \
-    --project="$PROJECT_ID"
-
-echo "Dataflow Flex Template registered at: $TEMPLATE_PATH"
-
-echo ""
-echo "✅ Phase 4 complete. Dataflow Flex Template registered."
-
-# =============================================================================
-# PHASE 5 — Terraform apply app
+# PHASE 4 — Deploy API Cloud Run, capture URL
 # =============================================================================
 
 echo ""
-echo ">>> PHASE 5: Deploying app infrastructure for environment '$ENV'..."
-# Navigate to the environment folder chosen by the user
+echo ">>> PHASE 4: Deploying API Cloud Run service for environment '$ENV'..."
 cd envs/$ENV/terraform/02_app
 
 terraform init -upgrade
 
-# Validate syntax (Fail Fast)
 echo "-> Validating Terraform code..."
 if ! terraform validate; then
     echo "❌ ERROR: Terraform validation failed. Check your .tf files."
@@ -265,24 +200,53 @@ if ! terraform validate; then
 fi
 echo "✅ Terraform validated successfully."
 
-terraform apply -auto-approve
+terraform apply -auto-approve -target=module.api_service
 
-# Return to the root (go up four levels)
+API_URL=$(terraform output -raw api_service_url)
+echo "API URL: $API_URL"
+
 cd ../../../..
 
 echo ""
-echo "✅ Phase 5 complete. App infrastructure ready for environment '$ENV'."
+echo "✅ Phase 4 complete. API service deployed at $API_URL"
 
 # =============================================================================
-# PHASE 6 — Execute Firebase demo users seeder job
+# PHASE 5 — Build and push Frontend Docker image with API URL
 # =============================================================================
+
 echo ""
-echo ">>> PHASE 6: Running Firebase demo users seeder job..."
-gcloud run jobs execute "firebase-demo-seeder-$ENV" \
-    --region="$REGION" \
-    --project="$PROJECT_ID" \
-    --wait
-echo "✅ Phase 6 complete. Demo users created in Firebase."
+echo ">>> PHASE 5: Building and pushing Frontend Docker image..."
+
+echo "-> Building FRONTEND image with VITE_API_URL=$API_URL..."
+cd ..
+docker build --platform linux/amd64 --build-arg "VITE_API_URL=$API_URL" -t $IMAGE_URL_FRONTEND frontend
+docker push $IMAGE_URL_FRONTEND
+cd GCP
+
+echo "✅ Phase 5 complete. Frontend image pushed to Artifact Registry."
+
+# =============================================================================
+# PHASE 6 — Terraform apply app (full — adds frontend)
+# =============================================================================
+
+echo ""
+echo ">>> PHASE 6: Deploying frontend Cloud Run service for environment '$ENV'..."
+cd envs/$ENV/terraform/02_app
+
+terraform apply -auto-approve
+
+FRONTEND_URL=$(terraform output -raw frontend_service_url)
+
+cd ../../../..
+
+echo ""
+echo "✅ Phase 6 complete. App infrastructure ready for environment '$ENV'."
+echo ""
+echo "========================================"
+echo "  Deployment complete!"
+echo "  API:      $API_URL"
+echo "  Frontend: $FRONTEND_URL"
+echo "========================================"
 
 # =============================================================================
 # OPTIONAL DESTROY — Only available in the dev environment
