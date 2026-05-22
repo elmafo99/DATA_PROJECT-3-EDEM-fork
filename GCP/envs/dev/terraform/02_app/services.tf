@@ -23,7 +23,7 @@ module "api_service" {
     DB_USER      = data.terraform_remote_state.data.outputs.db_user
     DB_NAME      = data.terraform_remote_state.data.outputs.db_name
     DB_PORT      = "5432"
-    CORS_ORIGINS = "*"
+    CORS_ORIGINS = "https://tienda-de-ropa-frontend-dev-1082988982892.europe-west1.run.app"
   }
 
   secret_env_vars = {
