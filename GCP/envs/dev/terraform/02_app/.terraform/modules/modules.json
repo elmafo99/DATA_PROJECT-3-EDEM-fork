@@ -1,0 +1,1 @@
+{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"api_service","Source":"../../../../modules/cloud_run_service","Dir":"../../../../modules/cloud_run_service"},{"Key":"frontend_service","Source":"../../../../modules/cloud_run_service","Dir":"../../../../modules/cloud_run_service"}]}

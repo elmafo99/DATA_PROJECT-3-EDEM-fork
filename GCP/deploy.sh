@@ -190,6 +190,7 @@ docker push $IMAGE_URL_DEMO_USERS
 
 # 4. API image
 echo "-> Building API image..."
+<<<<<<< Updated upstream
 docker build --platform linux/amd64 -t $IMAGE_URL_API ./src/api
 docker push $IMAGE_URL_API
 
@@ -200,6 +201,22 @@ docker push $IMAGE_URL_FRONTEND
 
 echo "✅ Phase 2 complete. Docker images pushed to artifact registry."
 
+=======
+cd ..
+cp -r images server/
+cp init-db/01-schema.sql server/
+docker build --platform linux/amd64 -t $IMAGE_URL_API server
+rm -rf server/images
+rm -f server/01-schema.sql
+docker push $IMAGE_URL_API
+
+echo "-> Building FRONTEND image (placeholder — no API URL yet)..."
+docker build --platform linux/amd64 -t $IMAGE_URL_FRONTEND frontend
+docker push $IMAGE_URL_FRONTEND
+cd GCP
+
+echo "✅ Phase 2 complete. API and frontend images pushed to Artifact Registry."
+>>>>>>> Stashed changes
 
 # =============================================================================
 # PHASE 3 — Terraform apply data
@@ -230,6 +247,7 @@ echo "✅ Phase 3 complete. Data infrastructure ready for environment '$ENV'."
 
 
 # =============================================================================
+<<<<<<< Updated upstream
 # PHASE 4 — Dataflow Flex Template build
 # =============================================================================
 echo ""
@@ -253,6 +271,13 @@ echo "✅ Phase 4 complete. Dataflow Flex Template registered."
 echo ""
 echo ">>> PHASE 5: Deploying app infrastructure for environment '$ENV'..."
 # Navigate to the environment folder chosen by the user
+=======
+# PHASE 4 — Deploy frontend + API (Terraform resolves CORS automatically)
+# =============================================================================
+
+echo ""
+echo ">>> PHASE 4: Deploying frontend and API for environment '$ENV'..."
+>>>>>>> Stashed changes
 cd envs/$ENV/terraform/02_app
 
 terraform init -upgrade
@@ -267,6 +292,7 @@ echo "✅ Terraform validated successfully."
 
 terraform apply -auto-approve
 
+<<<<<<< Updated upstream
 # Return to the root (go up four levels)
 cd ../../../..
 
@@ -276,6 +302,36 @@ echo "✅ Phase 5 complete. App infrastructure ready for environment '$ENV'."
 # =============================================================================
 # PHASE 6 — Execute Firebase demo users seeder job
 # =============================================================================
+=======
+FRONTEND_URL=$(terraform output -raw frontend_service_url)
+API_URL=$(terraform output -raw api_service_url)
+echo "Frontend URL: $FRONTEND_URL"
+echo "API URL:      $API_URL"
+
+cd ../../../..
+
+echo ""
+echo "✅ Phase 4 complete. Frontend and API deployed."
+
+# =============================================================================
+# PHASE 5 — Rebuild frontend with real API URL and redeploy
+# =============================================================================
+
+echo ""
+echo ">>> PHASE 5: Rebuilding frontend with VITE_API_URL=$API_URL..."
+cd ..
+docker build --platform linux/amd64 --build-arg "VITE_API_URL=$API_URL" -t $IMAGE_URL_FRONTEND frontend
+docker push $IMAGE_URL_FRONTEND
+cd GCP
+
+gcloud run services update "${APP_NAME}-frontend-${ENV}" \
+  --region="$REGION" \
+  --image="$IMAGE_URL_FRONTEND" \
+  --project="$PROJECT_ID"
+
+echo ""
+echo "✅ Phase 5 complete. Frontend updated with real API URL."
+>>>>>>> Stashed changes
 echo ""
 echo ">>> PHASE 6: Running Firebase demo users seeder job..."
 gcloud run jobs execute "firebase-demo-seeder-$ENV" \

@@ -39,6 +39,23 @@ app.mount("/images", StaticFiles(directory="/app/images"), name="images")
 
 security = HTTPBearer()
 
+@app.on_event("startup")
+def init_db():
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        schema_path = os.path.join(os.path.dirname(__file__), "01-schema.sql")
+        with open(schema_path, "r") as f:
+            cur.execute(f.read())
+        conn.commit()
+        logger.info("Schema initialized successfully")
+    except Exception as e:
+        conn.rollback()
+        logger.error("Error initializing schema: %s", e)
+    finally:
+        cur.close()
+        release_connection(conn)
+
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = decode_token(credentials.credentials)
@@ -50,9 +67,9 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 # ─────────────────────────────────────────────────────────────
 # 1. PING-PONG
 # ─────────────────────────────────────────────────────────────
-@app.get("/ping-pong", tags=["Health"])
+@app.get("/ping", tags=["Health"])
 def ping_pong():
-    return {"message": "pong"}
+    return {"status": "pong"}
 
 
 # ─────────────────────────────────────────────────────────────
