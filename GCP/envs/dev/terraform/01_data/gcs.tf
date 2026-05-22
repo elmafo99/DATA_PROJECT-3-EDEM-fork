@@ -1,0 +1,1 @@
+# No GCS bucket needed — product images are embedded in the API container

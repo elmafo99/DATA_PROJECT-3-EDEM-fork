@@ -15,9 +15,9 @@ module "cloudsql_database" {
   region     = var.region
 
   # Resource names
-  instance_name = "risk-postgres-instance-dev"
-  db_name       = "risk_db"
-  db_user       = "risk_admin"
+  instance_name = "store-postgres-instance-dev"
+  db_name       = "store_db"
+  db_user       = "store_admin"
 
   db_password   = random_password.db_password.result
 

@@ -30,3 +30,15 @@ variable "env_vars" {
   type        = map(string)
   default     = {}
 }
+
+variable "secret_env_vars" {
+  description = "Map of env var name to Secret Manager secret ID — mounted as env vars at runtime"
+  type        = map(string)
+  default     = {}
+}
+
+variable "cloud_sql_instances" {
+  description = "List of Cloud SQL instance connection names to mount as Unix sockets (e.g. project:region:instance)"
+  type        = list(string)
+  default     = []
+}
