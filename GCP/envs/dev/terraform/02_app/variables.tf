@@ -19,3 +19,9 @@ variable "app_name" {
   description = "Application name, used as a prefix in resource names"
   type        = string
 }
+
+variable "cors_origins" {
+  description = "Allowed origins for the API CORS middleware (comma-separated)"
+  type        = string
+  default     = ""
+}

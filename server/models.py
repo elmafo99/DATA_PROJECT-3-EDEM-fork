@@ -20,6 +20,11 @@ class CompraIn(BaseModel):
     cantidad: float
     tipo_movimiento: str
 
+class SetComprasIn(BaseModel):
+    userID: int
+    articleID: str
+    quantity: str
+
 class CompraOut(BaseModel):
     transaccion_id: int
     fecha: Optional[datetime]

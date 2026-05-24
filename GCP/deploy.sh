@@ -70,7 +70,7 @@ environment     = "$ENV"
 EOF
 echo "✅ terraform.tfvars generated in envs/$ENV/terraform/01_data."
 
-# terraform.tfvars 02_app
+# terraform.tfvars 02_app — cors_origins se añade después de desplegar la API (Phase 4)
 cat > envs/$ENV/terraform/02_app/terraform.tfvars <<EOF
 project_id      = "$PROJECT_ID"
 region          = "$REGION"
@@ -148,6 +148,7 @@ gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
 IMAGE_URL_API="$REPO/api:latest"
 IMAGE_URL_FRONTEND="$REPO/frontend:latest"
+IMAGE_URL_DBJOB="$REPO/db-init:latest"
 
 echo "-> Building API image..."
 cd ..
@@ -155,9 +156,16 @@ cp -r images server/
 docker build --platform linux/amd64 -t $IMAGE_URL_API server
 rm -rf server/images
 docker push $IMAGE_URL_API
+
+echo "-> Building db-init image..."
+cp init-db/01-schema.sql db-init/schema.sql
+docker build --platform linux/amd64 -t $IMAGE_URL_DBJOB db-init
+rm db-init/schema.sql
+docker push $IMAGE_URL_DBJOB
+
 cd GCP
 
-echo "✅ Phase 2 complete. API image pushed to Artifact Registry."
+echo "✅ Phase 2 complete. API and db-init images pushed to Artifact Registry."
 
 # =============================================================================
 # PHASE 3 — Terraform apply data
@@ -200,7 +208,7 @@ if ! terraform validate; then
 fi
 echo "✅ Terraform validated successfully."
 
-terraform apply -auto-approve -target=module.api_service
+terraform apply -auto-approve -target=module.api_service -target=module.db_init_job
 
 API_URL=$(terraform output -raw api_service_url)
 echo "API URL: $API_URL"
@@ -209,6 +217,35 @@ cd ../../../..
 
 echo ""
 echo "✅ Phase 4 complete. API service deployed at $API_URL"
+
+# Derive FRONTEND_URL from API_URL — same project hash, different service name.
+# Cloud Run v2 URLs follow {service-name}-{hash}.{region}.run.app, so replacing
+# the service name gives the exact frontend URL without any separate lookup.
+FRONTEND_URL="${API_URL/$APP_NAME-api-$ENV/$APP_NAME-frontend-$ENV}"
+echo "Frontend URL (computed): $FRONTEND_URL"
+
+# Update 02_app tfvars with the correct CORS_ORIGINS now that we know both URLs.
+cat > envs/$ENV/terraform/02_app/terraform.tfvars <<EOF
+project_id      = "$PROJECT_ID"
+region          = "$REGION"
+environment     = "$ENV"
+app_name        = "$APP_NAME"
+cors_origins    = "$FRONTEND_URL"
+EOF
+echo "✅ terraform.tfvars updated in envs/$ENV/terraform/02_app with cors_origins."
+
+# =============================================================================
+# PHASE 4.5 — Execute DB init job (creates tables and loads seed data)
+# =============================================================================
+
+echo ""
+echo ">>> PHASE 4.5: Running DB init job to create tables and seed data..."
+gcloud run jobs execute "${APP_NAME}-db-init-${ENV}" \
+  --wait \
+  --region "$REGION" \
+  --project "$PROJECT_ID"
+
+echo "✅ Phase 4.5 complete. Database initialized."
 
 # =============================================================================
 # PHASE 5 — Build and push Frontend Docker image with API URL

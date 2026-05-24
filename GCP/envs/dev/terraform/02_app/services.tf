@@ -23,7 +23,34 @@ module "api_service" {
     DB_USER      = data.terraform_remote_state.data.outputs.db_user
     DB_NAME      = data.terraform_remote_state.data.outputs.db_name
     DB_PORT      = "5432"
-    CORS_ORIGINS = "https://tienda-de-ropa-frontend-dev-1082988982892.europe-west1.run.app"
+    CORS_ORIGINS = var.cors_origins
+  }
+
+  secret_env_vars = {
+    DB_PASSWORD = data.terraform_remote_state.data.outputs.db_password_secret_id
+  }
+
+  cloud_sql_instances = [data.terraform_remote_state.data.outputs.db_instance_connection_name]
+}
+
+# =============================================================================
+# DB INIT — Cloud Run Job (crea tablas y carga datos iniciales)
+# =============================================================================
+
+module "db_init_job" {
+  source     = "../../../../modules/cloud_run_job"
+  project_id = var.project_id
+
+  job_name              = "${var.app_name}-db-init-${var.environment}"
+  region                = var.region
+  service_account_email = data.terraform_remote_state.base.outputs.app_sa_email
+  image_url             = "${var.region}-docker.pkg.dev/${var.project_id}/${var.app_name}-${var.environment}/db-init:latest"
+
+  env_vars = {
+    DB_HOST = "/cloudsql/${data.terraform_remote_state.data.outputs.db_instance_connection_name}"
+    DB_USER = data.terraform_remote_state.data.outputs.db_user
+    DB_NAME = data.terraform_remote_state.data.outputs.db_name
+    DB_PORT = "5432"
   }
 
   secret_env_vars = {
