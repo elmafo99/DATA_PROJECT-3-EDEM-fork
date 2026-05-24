@@ -8,7 +8,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from database import get_connection, release_connection
-from models import (ArticuloOut, CompraIn, CompraOut,
+from models import (ArticuloOut, CompraIn, CompraOut, SetComprasIn,
                     UsuarioRegister, UsuarioLogin, UsuarioOut, TokenOut)
 from auth import hash_password, verify_password, create_access_token, decode_token
 from typing import List, Optional
@@ -26,11 +26,10 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -50,9 +49,9 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 # ─────────────────────────────────────────────────────────────
 # 1. PING-PONG
 # ─────────────────────────────────────────────────────────────
-@app.get("/ping-pong", tags=["Health"])
+@app.get("/ping", tags=["Health"])
 def ping_pong():
-    return {"message": "pong"}
+    return {"status": "pong"}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -245,8 +244,8 @@ def get_destacado():
 # ─────────────────────────────────────────────────────────────
 # 6. GET COMPRAS
 # ─────────────────────────────────────────────────────────────
-@app.get("/getCompraUserId", response_model=List[CompraOut], tags=["Transacciones"])
-def get_compra_user_id(current_user: dict = Depends(get_current_user)):
+@app.get("/getCompras", response_model=List[CompraOut], tags=["Transacciones"])
+def get_compra_user_id(userID: str):
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -254,7 +253,7 @@ def get_compra_user_id(current_user: dict = Depends(get_current_user)):
             SELECT transaccion_id, fecha, usuario_id, articulo_id,
                    cantidad, tipo_movimiento, coste_total
             FROM transacciones WHERE usuario_id = %s
-        """, (current_user["usuario_id"],))
+        """, (userID,))
         rows = cur.fetchall()
         cols = ["transaccion_id", "fecha", "usuario_id", "articulo_id",
                 "cantidad", "tipo_movimiento", "coste_total"]
@@ -264,7 +263,7 @@ def get_compra_user_id(current_user: dict = Depends(get_current_user)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error en /getCompraUserId: %s", e)
+        logger.error("Error en /getCompras: %s", e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
     finally:
         cur.close()
@@ -274,17 +273,19 @@ def get_compra_user_id(current_user: dict = Depends(get_current_user)):
 # ─────────────────────────────────────────────────────────────
 # 7. SET COMPRA
 # ─────────────────────────────────────────────────────────────
-@app.post("/setCompraUserId", response_model=CompraOut, tags=["Transacciones"])
-def set_compra_user_id(compra: CompraIn, current_user: dict = Depends(get_current_user)):
+@app.post("/setCompras", response_model=CompraOut, tags=["Transacciones"])
+def set_compra_user_id(compra: SetComprasIn):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        # Precio calculado desde la BD — nunca se confía en el cliente
-        cur.execute("SELECT precio_unitario FROM articulos WHERE articulo_id = %s", (compra.articulo_id,))
+        articulo_id = int(compra.articleID)
+        cantidad = float(compra.quantity)
+
+        cur.execute("SELECT precio_unitario FROM articulos WHERE articulo_id = %s", (articulo_id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="El artículo no existe")
-        coste_total = float(row[0]) * compra.cantidad
+        coste_total = float(row[0]) * cantidad
 
         cur.execute("""
             INSERT INTO transacciones
@@ -292,8 +293,7 @@ def set_compra_user_id(compra: CompraIn, current_user: dict = Depends(get_curren
             VALUES (%s, %s, %s, %s, %s)
             RETURNING transaccion_id, fecha, usuario_id, articulo_id,
                       cantidad, tipo_movimiento, coste_total
-        """, (current_user["usuario_id"], compra.articulo_id,
-              compra.cantidad, compra.tipo_movimiento, coste_total))
+        """, (compra.userID, articulo_id, cantidad, "compra", coste_total))
         conn.commit()
         row = cur.fetchone()
         cols = ["transaccion_id", "fecha", "usuario_id", "articulo_id",
@@ -303,7 +303,7 @@ def set_compra_user_id(compra: CompraIn, current_user: dict = Depends(get_curren
         raise
     except Exception as e:
         conn.rollback()
-        logger.error("Error en /setCompraUserId: %s", e)
+        logger.error("Error en /setCompras: %s", e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
     finally:
         cur.close()
