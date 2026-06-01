@@ -160,29 +160,25 @@ COLS_ARTICULO = ["articulo_id", "nombre", "descripcion", "estado",
                  "categoria", "unidad_medida", "precio_unitario", "url_imagen",
                  "talla", "es_drop", "es_destacado"]
 
-@app.get("/getArticulos", response_model=List[ArticuloOut], tags=["Artículos"])
-def get_articulos(talla: Optional[str] = None, estado: Optional[str] = None):
+@app.get("/products/{id}", response_model=ArticuloOut, tags=["Artículos"])
+def get_product(id: int):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        conditions, params = [], []
-        if talla:
-            conditions.append("talla = %s")
-            params.append(talla)
-        if estado:
-            conditions.append("estado = %s")
-            params.append(estado)
-        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        cur.execute(f"""
+        cur.execute("""
             SELECT articulo_id, nombre, descripcion, estado,
                    categoria, unidad_medida, precio_unitario, url_imagen,
                    talla, es_drop, es_destacado
-            FROM articulos {where}
-        """, params)
-        rows = cur.fetchall()
-        return [dict(zip(COLS_ARTICULO, row)) for row in rows]
+            FROM articulos WHERE articulo_id = %s
+        """, (id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Producto no encontrado")
+        return dict(zip(COLS_ARTICULO, row))
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Error en /getArticulos: %s", e)
+        logger.error("Error en /products/%s: %s", id, e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
     finally:
         cur.close()
