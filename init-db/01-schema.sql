@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
 
 CREATE TABLE IF NOT EXISTS articulos (
     articulo_id SERIAL PRIMARY KEY,
-    nombre VARCHAR(50),
+    nombre VARCHAR(50) UNIQUE,
     descripcion TEXT,
     estado VARCHAR(20),
     categoria VARCHAR(50),
@@ -84,7 +84,7 @@ VALUES
         TRUE,
         FALSE
     )
-ON CONFLICT DO NOTHING;
+ON CONFLICT (nombre) DO NOTHING;
 
 INSERT INTO articulos
     (nombre, descripcion, estado, categoria, unidad_medida, precio_unitario, url_imagen, talla, es_drop, es_destacado)
@@ -149,4 +149,4 @@ VALUES
         FALSE,
         FALSE
     )
-ON CONFLICT DO NOTHING;
+ON CONFLICT (nombre) DO NOTHING;

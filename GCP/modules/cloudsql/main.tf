@@ -21,6 +21,20 @@ resource "google_sql_database_instance" "instance" {
     # Enable public IP so local machines can connect during development
     ip_configuration {
       ipv4_enabled = true
+
+      dynamic "authorized_networks" {
+        for_each = var.authorized_networks
+        content {
+          name  = authorized_networks.value.name
+          value = authorized_networks.value.cidr_block
+        }
+      }
+    }
+
+    # Required for logical replication (PG -> PG migration to AWS)
+    database_flags {
+      name  = "cloudsql.logical_decoding"
+      value = "on"
     }
 
     user_labels = var.labels

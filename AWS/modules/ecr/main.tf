@@ -1,0 +1,35 @@
+# =============================================================================
+# ECR MODULE — one repo per image, mirrors the GCP Artifact Registry repo
+# (which holds api/frontend/db-init under a single repo path there).
+# =============================================================================
+
+resource "aws_ecr_repository" "this" {
+  for_each = toset(var.repository_names)
+
+  name                 = "${var.name_prefix}-${each.value}"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = merge(var.labels, { Name = "${var.name_prefix}-${each.value}" })
+}
+
+resource "aws_ecr_lifecycle_policy" "this" {
+  for_each   = aws_ecr_repository.this
+  repository = each.value.name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 10 images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = { type = "expire" }
+    }]
+  })
+}

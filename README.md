@@ -4,7 +4,7 @@ Aplicación web de e-commerce para una tienda de ropa vintage y streetwear. Perm
 
 ---
 
-## Arquitectura
+## Arquitectura de la aplicación
 
 ![Arquitectura](arquitectura.png)
 
@@ -13,6 +13,56 @@ El sistema se compone de tres capas:
 - **Frontend** — Aplicación React + Vite servida por Nginx. Se comunica con la API para obtener el catálogo y gestionar las sesiones de usuario.
 - **API (Backend)** — Servidor FastAPI (Python) que expone los endpoints REST, gestiona la autenticación JWT y sirve las imágenes de producto.
 - **Base de datos** — PostgreSQL 15 con el esquema de usuarios, artículos y transacciones.
+
+Esta misma arquitectura de 3 capas (frontend / API / base de datos) se despliega tanto en **GCP** como en **AWS**, descrito más abajo.
+
+---
+
+## Infraestructura cloud: GCP y AWS
+
+Este proyecto existe en dos nubes simultáneamente:
+
+- **GCP** (`GCP/`, proyecto `edem-ejercicio-2526`) — despliegue original del ejercicio. Stack serverless: Cloud Run + Cloud SQL.
+- **AWS** (`AWS/`, cuenta `538675137535`, región `eu-north-1`) — migración del mismo stack a AWS. ECS Fargate + RDS.
+
+### Por qué dos nubes
+
+Ejercicio de migración cloud-a-cloud: partir de una app ya desplegada en GCP y replicar la misma arquitectura en AWS **sin downtime**, usando replicación lógica de PostgreSQL (GCP Cloud SQL → AWS RDS) para mover los datos en caliente mientras ambos stacks corren en paralelo. El objetivo final es el cutover: mover el tráfico real a AWS y apagar GCP. Ver checklist de cutover en [`AWS/README.md`](AWS/README.md).
+
+### Comparativa de arquitectura
+
+| Capa | GCP | AWS |
+| --- | --- | --- |
+| Frontend | Cloud Run (`tienda-de-ropa-frontend-dev`), imagen Nginx+React en Artifact Registry | ECS Fargate (`store-prod-frontend`) tras ALB, imagen en ECR |
+| API | Cloud Run (`tienda-de-ropa-api-dev`), FastAPI en Artifact Registry | ECS Fargate (`store-prod-api`) tras ALB, imagen en ECR |
+| Base de datos | Cloud SQL PostgreSQL 15 (`store-postgres-instance-dev`, db-f1-micro) | RDS PostgreSQL (`store-prod-db`), red privada |
+| Secretos | Secret Manager (`store-dev-db-password`) | Secrets Manager (password RDS gestionado, `store-prod-gcp-repl-password` para la replicación) |
+| Red | VPC default / conexión pública Cloud SQL | VPC propia (`AWS/modules/network`), subnets públicas/privadas, NAT |
+| IaC | Terraform (`GCP/envs/dev/terraform/{00_base,01_data,02_app}`) | Terraform (`AWS/envs/prod/eu-north-1`, módulos `network`/`database`/`ecr`/`compute`) |
+| Despliegue | `GCP/deploy.sh` (Phases 0-6) | `AWS/deploy.sh` (Phases 1-5) |
+
+### Arquitectura AWS — detalle
+
+- **`AWS/modules/network`** — VPC, subnets públicas (ALBs, NAT) y privadas (ECS tasks, RDS), Internet Gateway, NAT Gateway.
+- **`AWS/modules/database`** — RDS PostgreSQL en subnets privadas, security group restringido a la VPC, master password en Secrets Manager (rotación automática AWS).
+- **`AWS/modules/ecr`** — repositorios ECR: `api`, `frontend`, `db-init`.
+- **`AWS/modules/compute`** — ECS cluster Fargate con:
+  - Servicio `api` tras ALB público (puerto 80 → container `api_container_port`), health check `/ping`.
+  - Servicio `frontend` tras ALB público propio (gateado por `var.deploy_frontend`), health check `/`.
+  - Security group `ecs-tasks-sg` con ingress scoped por puerto (solo desde el SG de los ALBs).
+  - IAM roles de ejecución/tarea, log groups en CloudWatch por servicio.
+  - `deployment_circuit_breaker` (enable + rollback) en ambos servicios — rollback automático si un deploy deja el servicio sin tasks.
+  - Task definitions one-off: `db-init` (carga esquema+seed en RDS) y `migration-sub` (crea la subscription de replicación lógica GCP→RDS).
+
+### Replicación lógica GCP → AWS
+
+Mientras el cutover no se ejecute, RDS recibe cambios de Cloud SQL vía PostgreSQL logical replication:
+
+- GCP: `migracion_pub` (publication) + rol `repl_user`.
+- AWS: `migracion_sub` (subscription), creada por el task one-off `store-prod-migration-sub` (imagen `db-init:subscription`, fuente en `db-init/subscription/`).
+- Requiere `cloudsql.logical_decoding=on` en Cloud SQL y el NAT EIP de AWS en `authorized_networks` de Cloud SQL.
+
+Detalle completo del estado de la migración, bloqueadores resueltos, y checklist de cutover/decommission: **[`AWS/README.md`](AWS/README.md)**.
 
 ---
 

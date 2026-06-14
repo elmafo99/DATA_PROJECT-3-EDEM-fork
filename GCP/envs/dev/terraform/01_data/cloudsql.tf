@@ -29,6 +29,14 @@ module "cloudsql_database" {
   # Key for DEV: allows Terraform to destroy the entire database
   enable_deletion_protection = false
 
+  # AWS NAT Gateway EIP — temporary, for PG logical replication during migration
+  authorized_networks = [
+    {
+      name       = "aws-nat-migration"
+      cidr_block = "13.51.77.59/32"
+    }
+  ]
+
   # Resource labels
   labels = {
     environment = "dev"

@@ -11,6 +11,12 @@ GCP/envs/**/*.tfstate.lock.info
 
 GCP/envs/**/*.tfvars
 
+AWS/envs/**/*.tfstate
+AWS/envs/**/*.tfstate.backup
+AWS/envs/**/*.tfstate.lock.info
+
+AWS/envs/**/*.tfvars
+
 # Terraform working directory (downloaded plugins, modules, etc.)
 # Regenerated with 'terraform init', does not need to be in the repo.
 GCP/envs/**/.terraform/
@@ -27,3 +33,4 @@ GCP/envs/**/*.tfplan
 
 # Saved terraform plans
 *.tfplan
+**/tfplan

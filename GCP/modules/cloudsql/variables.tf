@@ -56,3 +56,12 @@ variable "enable_deletion_protection" {
   description = "Prevents accidental deletion of the Cloud SQL instance"
   type        = bool
 }
+
+variable "authorized_networks" {
+  description = "External CIDR blocks allowed to connect (e.g. AWS NAT Gateway EIP during migration)"
+  type = list(object({
+    name       = string
+    cidr_block = string
+  }))
+  default = []
+}
